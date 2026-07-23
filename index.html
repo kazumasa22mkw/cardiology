@@ -1612,11 +1612,6 @@ function check() {
     const q = filtered[idx];
     const checkedBoxes = Array.from(document.querySelectorAll('input[name="opt"]:checked'));
     
-    if(checkedBoxes.length === 0 && q.opts[0].id !== "none") { 
-        alert("選択肢を選んでください"); 
-        return; 
-    }
-    
     let userAnsStr = "選択なし";
     let checked = [];
     if (checkedBoxes.length > 0 && checkedBoxes[0].value !== "none") {
@@ -1627,13 +1622,17 @@ function check() {
     if (q.opts[0].id !== "none") {
         const correct = q.ans ? [...q.ans].sort() : [];
         const isOk = JSON.stringify(checked) === JSON.stringify(correct);
-        showFeedback(isOk);
+        
+        // 選択肢が選ばれている場合のみ「〇」「×」のポップアップ演出を出す
+        if (checked.length > 0) {
+            showFeedback(isOk);
+        }
 
-        // 正誤によって復習リストを更新
+        // 正解した場合は復習リストから削除し、間違えた場合・未選択で解答を見た場合は復習リストに追加
         if (isOk) {
-            removeWrongId(q.id); // 正解したら復習リストから削除
+            removeWrongId(q.id); 
         } else {
-            saveWrongId(q.id);   // 間違えたら復習リストに追加
+            saveWrongId(q.id);   
         }
         
         // バッジの表示を更新
