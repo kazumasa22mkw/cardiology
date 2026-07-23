@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>medilink QB形式 - 過去問演習アプリ(演出追加・完全版)</title>
+<title>medilink QB形式 - 過去問演習アプリ(復習機能追加版)</title>
 <style>
     :root {
         --primary: #0056b3;
@@ -58,7 +58,7 @@
         padding: 8px;
         border-radius: 6px;
         border: none;
-        max-width: 50%;
+        max-width: 35%;
         font-size: 14px;
         background: #fff;
         font-weight: bold;
@@ -91,22 +91,28 @@
     }
     
     /* ボタン類 */
-    .controls { display: flex; gap: 8px; align-items: center;}
-    .shuffle-btn {
+    .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end;}
+    .head-btn {
         background: rgba(255,255,255,0.2);
         border: 1px solid rgba(255,255,255,0.4);
         color: #fff;
-        padding: 6px 12px;
+        padding: 6px 10px;
         border-radius: 20px;
         font-size: 13px;
         font-weight: bold;
         cursor: pointer;
         transition: 0.2s;
+        white-space: nowrap;
     }
-    .shuffle-btn.active {
+    .head-btn.active {
         background: #ffc107;
         color: #333;
         border-color: #ffc107;
+    }
+    .wrong-btn.active {
+        background: #dc3545;
+        color: #fff;
+        border-color: #dc3545;
     }
     .progress-btn {
         background: rgba(0,0,0,0.2);
@@ -157,6 +163,11 @@
         font-size: 12px;
         font-weight: bold;
         white-space: nowrap;
+    }
+    .wrong-badge {
+        color: #dc3545;
+        font-weight: bold;
+        margin-left: 5px;
     }
     
     .q-text {
@@ -333,11 +344,18 @@
         font-size: 14px;
         cursor: pointer;
         color: #495057;
+        position: relative;
     }
     .q-grid-btn.current {
         background: var(--primary);
         color: #fff;
         border-color: var(--primary);
+    }
+    .q-grid-btn.is-wrong::after {
+        content: "⚠️";
+        position: absolute;
+        top: -5px; right: -5px;
+        font-size: 12px;
     }
     
     .empty-state {
@@ -350,22 +368,21 @@
 </head>
 <body>
 
-<!-- 演出用要素 -->
 <div id="feedback-overlay"><div id="feedback-mark" class="feedback-mark"></div></div>
 
 <div class="header">
     <div class="header-top">
         <select id="cat-sel" onchange="applyFilters()">
-            <option value="all">全分野（まとめて演習）</option>
+            <option value="all">全分野</option>
         </select>
         <div class="controls">
-            <button id="shuffle-btn" class="shuffle-btn" onclick="toggleShuffle()">🔀 シャッフル</button>
+            <button id="wrong-filter-btn" class="head-btn wrong-btn" onclick="toggleWrongFilter()">⚠️ 復習</button>
+            <button id="shuffle-btn" class="head-btn" onclick="toggleShuffle()">🔀 ｼｬｯﾌﾙ</button>
             <button class="progress-btn" onclick="openModal()">
                 <span id="q-num">0</span> / <span id="q-total">0</span> 🔽
             </button>
         </div>
     </div>
-    <!-- 検索バー -->
     <div class="header-search">
         <input type="text" id="search-input" placeholder="問題文や解説をキーワードで検索..." oninput="applyFilters()">
     </div>
@@ -399,7 +416,6 @@
     <button class="nav-btn next" id="next-btn" onclick="go(1)">次の問題 ＞</button>
 </div>
 
-<!-- 問題一覧モーダル -->
 <div id="q-modal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
@@ -410,9 +426,6 @@
     </div>
 </div>
 
-<!-- ============================================== -->
-<!-- 生データ（整形済み完全版データ） -->
-<!-- ============================================== -->
 <script id="raw-data" type="text/plain">
 1. 解剖・生理
 * Starling（スターリング）の法則の基本原理はどれか。: A. 交感神経刺激が増加すると，心筋収縮力が増加する。 B. 心筋へのCaイオン流入が増加すると，収縮力が増加する。 C. 心房が収縮することにより，心室に血液が流入する。 D. 心室への流入量が増えると，一定の範囲で収縮力が増加する。 E. 静脈還流と心拍出量はほぼ同じである。
@@ -1348,16 +1361,34 @@ function escapeHTML(str) {
               .replace(/'/g, '&#39;');
 }
 
-// --- 画像タグの自動変換処理 ---
 function formatText(str) {
     if (!str) return "";
     let safeStr = escapeHTML(str);
-    // [img:URL] または [画像:URL] を画像タグに置換
     safeStr = safeStr.replace(/\[(?:画像|img):\s*(.+?)\]/gi, '<img class="q-img" src="$1" alt="添付画像">');
     return safeStr;
 }
 
-// --- 生データをJavaScriptの配列にパースする処理 ---
+// --- 間違えた問題の記録（ローカルストレージ） ---
+const STORAGE_KEY = 'medilink_wrong_ids';
+
+function getWrongIds() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } 
+    catch(e) { return []; }
+}
+function saveWrongId(id) {
+    let ids = getWrongIds();
+    if(!ids.includes(id)) { 
+        ids.push(id); 
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(ids)); 
+    }
+}
+function removeWrongId(id) {
+    let ids = getWrongIds();
+    ids = ids.filter(x => x !== id);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+}
+
+// --- データパース処理 ---
 function parseData() {
     const rawText = document.getElementById('raw-data').textContent;
     const lines = rawText.split('\n');
@@ -1370,18 +1401,14 @@ function parseData() {
         const line = lines[i].trim();
         if (!line || line === "問題" || line === "解答解説" || line.startsWith("【") || line.startsWith("※") || line.startsWith("■") || line.startsWith("━")) continue;
 
-        // 分野の判定 (数字. 分野名 の形式)
         if (line.match(/^\d+\.\s/)) {
             currentCat = line;
             continue;
         }
 
-        // 問題文の始まり
         if (line.startsWith('* ')) {
-            if (currentQ) {
-                questions.push(currentQ);
-            }
-            // ":" があればそこで問題文と選択肢群を分ける
+            if (currentQ) questions.push(currentQ);
+            
             const splitIdx = line.indexOf(':');
             let qText = line.substring(2).trim();
             let optStr = "";
@@ -1393,36 +1420,27 @@ function parseData() {
             currentQ = {
                 id: globalCounter++,
                 cat: currentCat,
-                text: qText + (optStr ? "\n" + optStr : ""), // 保険として問題文にそのまま残す
+                text: qText + (optStr ? "\n" + optStr : ""),
                 opts: [], 
                 ansText: "",
-                ans: [], // 正誤判定用の配列
+                ans: [],
                 exp: ""
             };
 
-            // 選択肢の抽出ロジック (1. 2. または a. b. または a b など)
             if (optStr) {
                 const regex = /(?:[1-5]|[a-eA-E])(?:\.|、|\s)(?!\d)/g;
                 let match;
                 let optIndices = [];
-                while ((match = regex.exec(optStr)) !== null) {
-                    optIndices.push(match.index);
-                }
+                while ((match = regex.exec(optStr)) !== null) optIndices.push(match.index);
                 
                 if(optIndices.length > 0) {
-                    currentQ.text = qText; // 選択肢が綺麗に抜けた場合は、問題文をスッキリさせる
+                    currentQ.text = qText;
                     for(let j=0; j<optIndices.length; j++){
                         let start = optIndices[j];
                         let end = (j+1 < optIndices.length) ? optIndices[j+1] : optStr.length;
                         let optChunk = optStr.substring(start, end).trim();
-                        
                         let idMatch = optChunk.match(/^([1-5a-eA-E])/);
-                        if(idMatch) {
-                            currentQ.opts.push({
-                                id: idMatch[1].toLowerCase(),
-                                text: optChunk
-                            });
-                        }
+                        if(idMatch) currentQ.opts.push({ id: idMatch[1].toLowerCase(), text: optChunk });
                     }
                 } else {
                     currentQ.opts = [{ id: "none", text: "この問題は選択肢がありません（解答を確認してください）" }];
@@ -1434,7 +1452,6 @@ function parseData() {
         else if (line.startsWith('解答:')) {
             if (currentQ) {
                 currentQ.ansText = line.substring(3).trim();
-                // 演出用：文字列の中から1-5, a-eの文字を抽出して正解配列（ans）を生成する
                 const ansMatches = currentQ.ansText.toLowerCase().match(/[1-5a-e]/g);
                 currentQ.ans = ansMatches ? ansMatches : [];
             }
@@ -1443,9 +1460,7 @@ function parseData() {
             if (currentQ) currentQ.exp = line.substring(3).trim();
         }
     }
-    if (currentQ) {
-        questions.push(currentQ);
-    }
+    if (currentQ) questions.push(currentQ);
     return questions;
 }
 
@@ -1454,6 +1469,7 @@ let originalFiltered = [];
 let filtered = [];
 let idx = 0;
 let isShuffled = false;
+let isWrongFilterOn = false;
 
 window.onload = () => {
     const sel = document.getElementById('cat-sel');
@@ -1475,22 +1491,25 @@ function toggleShuffle() {
     applyFilters();
 }
 
-function changeCategory() {
+function toggleWrongFilter() {
+    isWrongFilterOn = !isWrongFilterOn;
+    document.getElementById('wrong-filter-btn').classList.toggle('active', isWrongFilterOn);
     applyFilters();
 }
 
 function applyFilters() {
     const catVal = document.getElementById('cat-sel').value;
     const searchVal = document.getElementById('search-input').value.toLowerCase();
+    const wrongIds = getWrongIds();
     
     let temp = parsedQuestions;
     
-    // カテゴリフィルター
+    if (isWrongFilterOn) {
+        temp = temp.filter(q => wrongIds.includes(q.id));
+    }
     if (catVal !== 'all') {
         temp = temp.filter(q => q.cat === catVal);
     }
-    
-    // 文字検索フィルター
     if (searchVal) {
         temp = temp.filter(q => {
             const optsText = q.opts.map(o => o.text).join(" ");
@@ -1519,33 +1538,40 @@ function render() {
     const card = document.getElementById('q-card');
     const container = document.getElementById('main-container');
     
+    let emptyState = document.getElementById('empty-state');
+    if (!emptyState) {
+        emptyState = document.createElement('div');
+        emptyState.id = 'empty-state';
+        emptyState.className = 'empty-state';
+        container.appendChild(emptyState);
+    }
+    
     if(!filtered.length) {
         document.getElementById('q-num').textContent = 0;
         document.getElementById('q-total').textContent = 0;
         card.style.display = 'none';
         
-        let emptyState = document.getElementById('empty-state');
-        if (!emptyState) {
-            emptyState = document.createElement('div');
-            emptyState.id = 'empty-state';
-            emptyState.className = 'empty-state';
-            emptyState.textContent = '該当する問題が見つかりません。検索キーワードを変更してください。';
-            container.appendChild(emptyState);
+        if(isWrongFilterOn && !document.getElementById('search-input').value) {
+            emptyState.textContent = '🎉 全問正解です！（間違えた問題はありません）';
+        } else {
+            emptyState.textContent = '該当する問題が見つかりません。検索条件を変更してください。';
         }
         emptyState.style.display = 'block';
         return;
     }
     
+    emptyState.style.display = 'none';
     card.style.display = 'block';
-    const emptyState = document.getElementById('empty-state');
-    if (emptyState) emptyState.style.display = 'none';
 
     const q = filtered[idx];
+    const isWrong = getWrongIds().includes(q.id);
     
     document.getElementById('q-num').textContent = idx + 1;
     document.getElementById('q-total').textContent = filtered.length;
     document.getElementById('q-cat').textContent = q.cat;
-    document.getElementById('q-id').textContent = `No. ${q.id}`;
+    
+    // 復習対象の場合はバッジを表示
+    document.getElementById('q-id').innerHTML = `No. ${q.id} ${isWrong ? '<span class="wrong-badge">⚠️復習</span>' : ''}`;
     
     document.getElementById('q-text').innerHTML = formatText(q.text);
     
@@ -1576,21 +1602,16 @@ function toggle(lbl, type) {
     } else {
         setTimeout(() => {
             const chk = lbl.querySelector('input');
-            if(chk.checked) {
-                lbl.classList.add('selected');
-            } else {
-                lbl.classList.remove('selected');
-            }
+            if(chk.checked) lbl.classList.add('selected');
+            else lbl.classList.remove('selected');
         }, 10);
     }
 }
 
-// --- 正誤判定と演出ロジック（追加版統合済） ---
 function check() {
     const q = filtered[idx];
     const checkedBoxes = Array.from(document.querySelectorAll('input[name="opt"]:checked'));
     
-    // 選択肢がある問題なのに1つも選んでいない場合はアラート
     if(checkedBoxes.length === 0 && q.opts[0].id !== "none") { 
         alert("選択肢を選んでください"); 
         return; 
@@ -1603,14 +1624,23 @@ function check() {
         userAnsStr = checkedBoxes.map(i => i.nextSibling.textContent.charAt(0)).join(', ');
     }
 
-    // 正誤判定と演出の実行 (選択肢がない問題は判定スキップ)
     if (q.opts[0].id !== "none") {
         const correct = q.ans ? [...q.ans].sort() : [];
         const isOk = JSON.stringify(checked) === JSON.stringify(correct);
         showFeedback(isOk);
+
+        // 正誤によって復習リストを更新
+        if (isOk) {
+            removeWrongId(q.id); // 正解したら復習リストから削除
+        } else {
+            saveWrongId(q.id);   // 間違えたら復習リストに追加
+        }
+        
+        // バッジの表示を更新
+        const isWrongNow = getWrongIds().includes(q.id);
+        document.getElementById('q-id').innerHTML = `No. ${q.id} ${isWrongNow ? '<span class="wrong-badge">⚠️復習</span>' : ''}`;
     }
     
-    // 解説表示
     document.getElementById('correct-ans').innerHTML = formatText(q.ansText) || "記載なし";
     document.getElementById('user-ans').textContent = userAnsStr;
     document.getElementById('exp-text').innerHTML = formatText(q.exp) || "解説の記載はありません。";
@@ -1623,19 +1653,16 @@ function check() {
     }, 100);
 }
 
-// 演出アニメーション表示関数
 function showFeedback(isOk) {
     const overlay = document.getElementById('feedback-overlay');
     const mark = document.getElementById('feedback-mark');
-    
     mark.textContent = isOk ? "〇" : "×";
     mark.className = "feedback-mark " + (isOk ? "mark-o" : "mark-x");
     overlay.style.display = 'flex';
+    mark.style.animation = "none";
+    void mark.offsetWidth; // reflow
     mark.style.animation = "pop 0.8s forwards";
-    
-    setTimeout(() => {
-        overlay.style.display = 'none';
-    }, 1000);
+    setTimeout(() => { overlay.style.display = 'none'; }, 1000);
 }
 
 function go(step) {
@@ -1649,9 +1676,14 @@ function openModal() {
     const grid = document.getElementById('q-grid');
     grid.innerHTML = '';
     
+    const wrongIds = getWrongIds();
     filtered.forEach((q, i) => {
         const btn = document.createElement('button');
-        btn.className = 'q-grid-btn' + (i === idx ? ' current' : '');
+        let classes = 'q-grid-btn';
+        if (i === idx) classes += ' current';
+        if (wrongIds.includes(q.id)) classes += ' is-wrong'; // 間違えた問題にはマークをつける
+        
+        btn.className = classes;
         btn.textContent = (i + 1);
         btn.onclick = () => {
             idx = i;
