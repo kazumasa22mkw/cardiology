@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>medilink QB形式 - 過去問演習アプリ(復習機能追加版)</title>
+<title>medilink QB形式 - 過去問演習アプリ(画像拡大・復習機能・全問題統合版)</title>
 <style>
     :root {
         --primary: #0056b3;
@@ -33,6 +33,49 @@
         0% { opacity: 0; transform: scale(0.5); } 
         50% { opacity: 1; transform: scale(1.2); } 
         100% { opacity: 0; transform: scale(1); } 
+    }
+
+    /* 画像拡大モーダル */
+    #img-modal {
+        display: none;
+        position: fixed;
+        z-index: 3000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.85);
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        cursor: zoom-out;
+    }
+    #img-modal-content {
+        max-width: 95%;
+        max-height: 90vh;
+        border-radius: 4px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        animation: zoom 0.2s ease-out;
+    }
+    @keyframes zoom {
+        from {transform:scale(0.95); opacity:0;}
+        to {transform:scale(1); opacity:1;}
+    }
+    .img-modal-close {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        color: #fff;
+        font-size: 35px;
+        font-weight: bold;
+        cursor: pointer;
+        z-index: 3001;
+        background: rgba(0,0,0,0.5);
+        width: 40px;
+        height: 40px;
+        line-height: 35px;
+        text-align: center;
+        border-radius: 50%;
     }
 
     /* 上部ヘッダー */
@@ -256,6 +299,11 @@
         margin: 15px auto;
         display: block;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        cursor: zoom-in; /* タップで拡大できることを示す */
+        transition: transform 0.2s;
+    }
+    img.q-img:active {
+        transform: scale(0.98);
     }
     
     /* 下部ナビゲーション */
@@ -367,6 +415,12 @@
 </style>
 </head>
 <body>
+
+<!-- 画像拡大用モーダル -->
+<div id="img-modal" onclick="closeImgModal()">
+    <span class="img-modal-close">&times;</span>
+    <img id="img-modal-content">
+</div>
 
 <div id="feedback-overlay"><div id="feedback-mark" class="feedback-mark"></div></div>
 
@@ -1366,6 +1420,20 @@ function formatText(str) {
     let safeStr = escapeHTML(str);
     safeStr = safeStr.replace(/\[(?:画像|img):\s*(.+?)\]/gi, '<img class="q-img" src="$1" alt="添付画像">');
     return safeStr;
+}
+
+// --- 画像拡大モーダル処理 ---
+document.addEventListener('click', function(e) {
+    // タップした要素がクラス 'q-img' を持っていれば拡大表示
+    if (e.target && e.target.classList.contains('q-img')) {
+        const modal = document.getElementById('img-modal');
+        const modalImg = document.getElementById('img-modal-content');
+        modal.style.display = "flex";
+        modalImg.src = e.target.src;
+    }
+});
+function closeImgModal() {
+    document.getElementById('img-modal').style.display = "none";
 }
 
 // --- 間違えた問題の記録（ローカルストレージ） ---
